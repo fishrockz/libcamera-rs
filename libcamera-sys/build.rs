@@ -45,6 +45,7 @@ fn main() {
     cc::Build::new()
         .cpp(true)
         .flag("-std=c++17")
+        .flag("-rpath=/usr/lib/aarch64-linuxgrd-gnu/")
         .files(c_api_sources)
         .include(libcamera_include_path)
         .compile("camera_c_api");
