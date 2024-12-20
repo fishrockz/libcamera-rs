@@ -37,7 +37,7 @@ pub enum ControlId {
     /// Specify an exposure mode for the AE algorithm to use.
     ///
     /// The exposure modes specify how the desired total exposure is divided
-    /// between the shutter time and the sensor's analogue gain. They are
+    /// between the exposure time and the sensor's analogue gain. They are
     /// platform specific, and not all exposure modes may be supported.
     AeExposureMode = AE_EXPOSURE_MODE,
     /// Specify an Exposure Value (EV) parameter.
@@ -51,8 +51,7 @@ pub enum ControlId {
     ///
     /// \sa AeEnable
     ExposureValue = EXPOSURE_VALUE,
-    /// Exposure time (shutter speed) for the frame applied in the sensor
-    /// device.
+    /// Exposure time for the frame applied in the sensor device.
     ///
     /// This value is specified in micro-seconds.
     ///
@@ -260,14 +259,13 @@ pub enum ControlId {
     /// values to be the same. Setting both values to 0 reverts to using the
     /// camera defaults.
     ///
-    /// The maximum frame duration provides the absolute limit to the shutter
-    /// speed computed by the AE algorithm and it overrides any exposure mode
+    /// The maximum frame duration provides the absolute limit to the exposure
+    /// time computed by the AE algorithm and it overrides any exposure mode
     /// setting specified with controls::AeExposureMode. Similarly, when a
     /// manual exposure time is set through controls::ExposureTime, it also
     /// gets clipped to the limits set by this control. When reported in
-    /// metadata, the control expresses the minimum and maximum frame
-    /// durations used after being clipped to the sensor provided frame
-    /// duration limits.
+    /// metadata, the control expresses the minimum and maximum frame durations
+    /// used after being clipped to the sensor provided frame duration limits.
     ///
     /// \sa AeExposureMode
     /// \sa ExposureTime
@@ -446,6 +444,8 @@ pub enum ControlId {
     /// The default gamma value must be 2.2 which closely mimics sRGB gamma.
     /// Note that this is camera gamma, so it is applied as 1.0/gamma.
     Gamma = GAMMA,
+    /// Enable or disable the debug metadata.
+    DebugMetadataEnable = DEBUG_METADATA_ENABLE,
     /// Control for AE metering trigger. Currently identical to
     /// ANDROID_CONTROL_AE_PRECAPTURE_TRIGGER.
     ///
@@ -851,7 +851,7 @@ impl Control for AeConstraintMode {}
 /// Specify an exposure mode for the AE algorithm to use.
 ///
 /// The exposure modes specify how the desired total exposure is divided
-/// between the shutter time and the sensor's analogue gain. They are
+/// between the exposure time and the sensor's analogue gain. They are
 /// platform specific, and not all exposure modes may be supported.
 #[derive(Debug, Clone, Copy, Eq, PartialEq, TryFromPrimitive, IntoPrimitive)]
 #[repr(i32)]
@@ -919,8 +919,7 @@ impl ControlEntry for ExposureValue {
     const ID: u32 = ControlId::ExposureValue as _;
 }
 impl Control for ExposureValue {}
-/// Exposure time (shutter speed) for the frame applied in the sensor
-/// device.
+/// Exposure time for the frame applied in the sensor device.
 ///
 /// This value is specified in micro-seconds.
 ///
@@ -1711,14 +1710,13 @@ impl Control for FrameDuration {}
 /// values to be the same. Setting both values to 0 reverts to using the
 /// camera defaults.
 ///
-/// The maximum frame duration provides the absolute limit to the shutter
-/// speed computed by the AE algorithm and it overrides any exposure mode
+/// The maximum frame duration provides the absolute limit to the exposure
+/// time computed by the AE algorithm and it overrides any exposure mode
 /// setting specified with controls::AeExposureMode. Similarly, when a
 /// manual exposure time is set through controls::ExposureTime, it also
 /// gets clipped to the limits set by this control. When reported in
-/// metadata, the control expresses the minimum and maximum frame
-/// durations used after being clipped to the sensor provided frame
-/// duration limits.
+/// metadata, the control expresses the minimum and maximum frame durations
+/// used after being clipped to the sensor provided frame duration limits.
 ///
 /// \sa AeExposureMode
 /// \sa ExposureTime
@@ -2441,6 +2439,35 @@ impl ControlEntry for Gamma {
     const ID: u32 = ControlId::Gamma as _;
 }
 impl Control for Gamma {}
+/// Enable or disable the debug metadata.
+#[derive(Debug, Clone)]
+pub struct DebugMetadataEnable(pub bool);
+impl Deref for DebugMetadataEnable {
+    type Target = bool;
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+impl DerefMut for DebugMetadataEnable {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
+    }
+}
+impl TryFrom<ControlValue> for DebugMetadataEnable {
+    type Error = ControlValueError;
+    fn try_from(value: ControlValue) -> Result<Self, Self::Error> {
+        Ok(Self(<bool>::try_from(value)?))
+    }
+}
+impl From<DebugMetadataEnable> for ControlValue {
+    fn from(val: DebugMetadataEnable) -> Self {
+        ControlValue::from(val.0)
+    }
+}
+impl ControlEntry for DebugMetadataEnable {
+    const ID: u32 = ControlId::DebugMetadataEnable as _;
+}
+impl Control for DebugMetadataEnable {}
 /// Control for AE metering trigger. Currently identical to
 /// ANDROID_CONTROL_AE_PRECAPTURE_TRIGGER.
 ///
@@ -3594,6 +3621,9 @@ pub fn make_dyn(
         ControlId::HdrMode => Ok(Box::new(HdrMode::try_from(val)?)),
         ControlId::HdrChannel => Ok(Box::new(HdrChannel::try_from(val)?)),
         ControlId::Gamma => Ok(Box::new(Gamma::try_from(val)?)),
+        ControlId::DebugMetadataEnable => {
+            Ok(Box::new(DebugMetadataEnable::try_from(val)?))
+        }
         #[cfg(feature = "vendor_draft")]
         ControlId::AePrecaptureTrigger => {
             Ok(Box::new(AePrecaptureTrigger::try_from(val)?))
