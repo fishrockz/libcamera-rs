@@ -6,7 +6,7 @@ use std::{
 use semver::{Comparator, Op, Version};
 
 fn main() {
-    let libcamera_version = Version::new(0, 3, 2);
+    let libcamera_version = Version::new(0, 4, 0);
 
     let versioned_files = Path::new("versioned_files");
     let mut candidates = std::fs::read_dir(versioned_files)
