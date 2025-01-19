@@ -1,4 +1,4 @@
-use std::ops::{Deref, DerefMut};
+use std::{ffi::CStr, ops::{Deref, DerefMut}};
 use num_enum::{IntoPrimitive, TryFromPrimitive};
 #[allow(unused_imports)]
 use crate::control::{Control, Property, ControlEntry, DynControlEntry};
@@ -151,7 +151,19 @@ pub enum ControlId {
     Lux = LUX,
     /// Enable or disable the AWB.
     ///
+    /// When AWB is enabled, the algorithm estimates the colour temperature of
+    /// the scene and computes colour gains and the colour correction matrix
+    /// automatically. The computed colour temperature, gains and correction
+    /// matrix are reported in metadata. The corresponding controls are ignored
+    /// if set in a request.
+    ///
+    /// When AWB is disabled, the colour temperature, gains and correction
+    /// matrix are not updated automatically and can be set manually in
+    /// requests.
+    ///
+    /// \sa ColourCorrectionMatrix
     /// \sa ColourGains
+    /// \sa ColourTemperature
     AwbEnable = AWB_ENABLE,
     /// Specify the range of illuminants to use for the AWB algorithm.
     ///
@@ -170,12 +182,29 @@ pub enum ControlId {
     /// order.
     ///
     /// ColourGains can only be applied in a Request when the AWB is disabled.
+    /// If ColourGains is set in a request but ColourTemperature is not, the
+    /// implementation shall calculate and set the ColourTemperature based on
+    /// the ColourGains.
     ///
     /// \sa AwbEnable
+    /// \sa ColourTemperature
     ColourGains = COLOUR_GAINS,
-    /// Report the estimate of the colour temperature for the frame, in kelvin.
+    /// ColourTemperature of the frame, in kelvin.
     ///
-    /// The ColourTemperature control can only be returned in metadata.
+    /// ColourTemperature can only be applied in a Request when the AWB is
+    /// disabled.
+    ///
+    /// If ColourTemperature is set in a request but ColourGains is not, the
+    /// implementation shall calculate and set the ColourGains based on the
+    /// given ColourTemperature. If ColourTemperature is set (either directly,
+    /// or indirectly by setting ColourGains) but ColourCorrectionMatrix is not,
+    /// the ColourCorrectionMatrix is updated based on the ColourTemperature.
+    ///
+    /// The ColourTemperature used to process the frame is reported in metadata.
+    ///
+    /// \sa AwbEnable
+    /// \sa ColourCorrectionMatrix
+    /// \sa ColourGains
     ColourTemperature = COLOUR_TEMPERATURE,
     /// Specify a fixed saturation parameter.
     ///
@@ -215,6 +244,12 @@ pub enum ControlId {
     /// white-balanced, but before any gamma transformation. The 3x3 matrix is
     /// stored in conventional reading order in an array of 9 floating point
     /// values.
+    ///
+    /// ColourCorrectionMatrix can only be applied in a Request when the AWB is
+    /// disabled.
+    ///
+    /// \sa AwbEnable
+    /// \sa ColourTemperature
     ColourCorrectionMatrix = COLOUR_CORRECTION_MATRIX,
     /// Sets the image portion that will be scaled to form the whole of
     /// the final output image.
@@ -597,111 +632,20 @@ pub enum ControlId {
     /// \sa ScalerCrop
     #[cfg(feature = "vendor_rpi")]
     ScalerCrops = SCALER_CROPS,
-    /// Span of the PiSP Frontend ISP generated statistics for the current
-    /// frame. This is sent in the Request metadata if the StatsOutputEnable is
-    /// set to true. The statistics struct definition can be found in
-    /// https://github.com/raspberrypi/libpisp/blob/main/src/libpisp/frontend/pisp_statistics.h
-    ///
-    /// \sa StatsOutputEnable
-    #[cfg(feature = "vendor_rpi")]
-    PispStatsOutput = PISP_STATS_OUTPUT,
-    /// This control returns a span of floating point values that represent the
-    /// output tensors from a Convolutional Neural Network (CNN). The size and
-    /// format of this array of values is entirely dependent on the neural
-    /// network used, and further post-processing may need to be performed at
-    /// the application level to generate the final desired output. This control
-    /// is agnostic of the hardware or software used to generate the output
-    /// tensors.
-    ///
-    /// The structure of the span is described by the CnnOutputTensorInfo
-    /// control.
-    ///
-    /// \sa CnnOutputTensorInfo
-    #[cfg(feature = "vendor_rpi")]
-    CnnOutputTensor = CNN_OUTPUT_TENSOR,
-    /// This control returns the structure of the CnnOutputTensor. This structure
-    /// takes the following form:
-    ///
-    /// constexpr unsigned int NetworkNameLen = 64;
-    /// constexpr unsigned int MaxNumTensors = 8;
-    /// constexpr unsigned int MaxNumDimensions = 8;
-    ///
-    /// struct CnnOutputTensorInfo {
-    /// ```text
-    ///   char networkName[NetworkNameLen];
-    ///   uint32_t numTensors;
-    ///   OutputTensorInfo info[MaxNumTensors];
-    /// ```
-    /// };
-    ///
-    /// with
-    ///
-    /// struct OutputTensorInfo {
-    /// ```text
-    ///   uint32_t tensorDataNum;
-    ///   uint32_t numDimensions;
-    ///   uint16_t size[MaxNumDimensions];
-    /// ```
-    /// };
-    ///
-    /// networkName is the name of the CNN used,
-    /// numTensors is the number of output tensors returned,
-    /// tensorDataNum gives the number of elements in each output tensor,
-    /// numDimensions gives the dimensionality of each output tensor,
-    /// size gives the size of each dimension in each output tensor.
-    ///
-    /// \sa CnnOutputTensor
-    #[cfg(feature = "vendor_rpi")]
-    CnnOutputTensorInfo = CNN_OUTPUT_TENSOR_INFO,
-    /// Boolean to control if the IPA returns the input tensor used by the CNN
-    /// to generate the output tensors via the CnnInputTensor control. Because
-    /// the input tensor may be relatively large, for efficiency reason avoid
-    /// enabling input tensor output unless required for debugging purposes.
-    ///
-    /// \sa CnnInputTensor
-    #[cfg(feature = "vendor_rpi")]
-    CnnEnableInputTensor = CNN_ENABLE_INPUT_TENSOR,
-    /// This control returns a span of uint8_t pixel values that represent the
-    /// input tensor for a Convolutional Neural Network (CNN). The size and
-    /// format of this array of values is entirely dependent on the neural
-    /// network used, and further post-processing (e.g. pixel normalisations) may
-    /// need to be performed at the application level to generate the final input
-    /// image.
-    ///
-    /// The structure of the span is described by the CnnInputTensorInfo
-    /// control.
-    ///
-    /// \sa CnnInputTensorInfo
-    #[cfg(feature = "vendor_rpi")]
-    CnnInputTensor = CNN_INPUT_TENSOR,
-    /// This control returns the structure of the CnnInputTensor. This structure
-    /// takes the following form:
-    ///
-    /// constexpr unsigned int NetworkNameLen = 64;
-    ///
-    /// struct CnnInputTensorInfo {
-    /// ```text
-    ///   char networkName[NetworkNameLen];
-    ///   uint32_t width;
-    ///   uint32_t height;
-    ///   uint32_t numChannels;
-    /// ```
-    /// };
-    ///
-    /// where
-    ///
-    /// networkName is the name of the CNN used,
-    /// width and height are the input tensor image width and height in pixels,
-    /// numChannels is the number of channels in the input tensor image.
-    ///
-    /// \sa CnnInputTensor
-    #[cfg(feature = "vendor_rpi")]
-    CnnInputTensorInfo = CNN_INPUT_TENSOR_INFO,
-    /// This control returns performance metrics for the CNN processing stage.
-    /// Two values are returned in this span, the runtime of the CNN/DNN stage
-    /// and the DSP stage in milliseconds.
-    #[cfg(feature = "vendor_rpi")]
-    CnnKpiInfo = CNN_KPI_INFO,
+}
+impl ControlId {
+    fn id(&self) -> u32 {
+        *self as u32
+    }
+    pub fn name(&self) -> String {
+        unsafe {
+            let c_str = libcamera_control_name_from_id(self.id());
+            if c_str.is_null() {
+                return "".into();
+            }
+            CStr::from_ptr(c_str).to_str().unwrap().into()
+        }
+    }
 }
 /// Enable or disable the AE.
 ///
@@ -1243,7 +1187,19 @@ impl ControlEntry for Lux {
 impl Control for Lux {}
 /// Enable or disable the AWB.
 ///
+/// When AWB is enabled, the algorithm estimates the colour temperature of
+/// the scene and computes colour gains and the colour correction matrix
+/// automatically. The computed colour temperature, gains and correction
+/// matrix are reported in metadata. The corresponding controls are ignored
+/// if set in a request.
+///
+/// When AWB is disabled, the colour temperature, gains and correction
+/// matrix are not updated automatically and can be set manually in
+/// requests.
+///
+/// \sa ColourCorrectionMatrix
 /// \sa ColourGains
+/// \sa ColourTemperature
 #[derive(Debug, Clone)]
 pub struct AwbEnable(pub bool);
 impl Deref for AwbEnable {
@@ -1351,8 +1307,12 @@ impl Control for AwbLocked {}
 /// order.
 ///
 /// ColourGains can only be applied in a Request when the AWB is disabled.
+/// If ColourGains is set in a request but ColourTemperature is not, the
+/// implementation shall calculate and set the ColourTemperature based on
+/// the ColourGains.
 ///
 /// \sa AwbEnable
+/// \sa ColourTemperature
 #[derive(Debug, Clone)]
 pub struct ColourGains(pub [f32; 2]);
 impl Deref for ColourGains {
@@ -1381,9 +1341,22 @@ impl ControlEntry for ColourGains {
     const ID: u32 = ControlId::ColourGains as _;
 }
 impl Control for ColourGains {}
-/// Report the estimate of the colour temperature for the frame, in kelvin.
+/// ColourTemperature of the frame, in kelvin.
 ///
-/// The ColourTemperature control can only be returned in metadata.
+/// ColourTemperature can only be applied in a Request when the AWB is
+/// disabled.
+///
+/// If ColourTemperature is set in a request but ColourGains is not, the
+/// implementation shall calculate and set the ColourGains based on the
+/// given ColourTemperature. If ColourTemperature is set (either directly,
+/// or indirectly by setting ColourGains) but ColourCorrectionMatrix is not,
+/// the ColourCorrectionMatrix is updated based on the ColourTemperature.
+///
+/// The ColourTemperature used to process the frame is reported in metadata.
+///
+/// \sa AwbEnable
+/// \sa ColourCorrectionMatrix
+/// \sa ColourGains
 #[derive(Debug, Clone)]
 pub struct ColourTemperature(pub i32);
 impl Deref for ColourTemperature {
@@ -1558,6 +1531,12 @@ impl Control for FocusFoM {}
 /// white-balanced, but before any gamma transformation. The 3x3 matrix is
 /// stored in conventional reading order in an array of 9 floating point
 /// values.
+///
+/// ColourCorrectionMatrix can only be applied in a Request when the AWB is
+/// disabled.
+///
+/// \sa AwbEnable
+/// \sa ColourTemperature
 #[derive(Debug, Clone)]
 pub struct ColourCorrectionMatrix(pub [[f32; 3]; 3]);
 impl Deref for ColourCorrectionMatrix {
@@ -3233,342 +3212,6 @@ impl ControlEntry for ScalerCrops {
 }
 #[cfg(feature = "vendor_rpi")]
 impl Control for ScalerCrops {}
-/// Span of the PiSP Frontend ISP generated statistics for the current
-/// frame. This is sent in the Request metadata if the StatsOutputEnable is
-/// set to true. The statistics struct definition can be found in
-/// https://github.com/raspberrypi/libpisp/blob/main/src/libpisp/frontend/pisp_statistics.h
-///
-/// \sa StatsOutputEnable
-#[cfg(feature = "vendor_rpi")]
-#[derive(Debug, Clone)]
-pub struct PispStatsOutput(pub Vec<u8>);
-#[cfg(feature = "vendor_rpi")]
-impl Deref for PispStatsOutput {
-    type Target = Vec<u8>;
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
-#[cfg(feature = "vendor_rpi")]
-impl DerefMut for PispStatsOutput {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.0
-    }
-}
-#[cfg(feature = "vendor_rpi")]
-impl TryFrom<ControlValue> for PispStatsOutput {
-    type Error = ControlValueError;
-    fn try_from(value: ControlValue) -> Result<Self, Self::Error> {
-        Ok(Self(<Vec<u8>>::try_from(value)?))
-    }
-}
-#[cfg(feature = "vendor_rpi")]
-impl From<PispStatsOutput> for ControlValue {
-    fn from(val: PispStatsOutput) -> Self {
-        ControlValue::from(val.0)
-    }
-}
-#[cfg(feature = "vendor_rpi")]
-impl ControlEntry for PispStatsOutput {
-    const ID: u32 = ControlId::PispStatsOutput as _;
-}
-#[cfg(feature = "vendor_rpi")]
-impl Control for PispStatsOutput {}
-/// This control returns a span of floating point values that represent the
-/// output tensors from a Convolutional Neural Network (CNN). The size and
-/// format of this array of values is entirely dependent on the neural
-/// network used, and further post-processing may need to be performed at
-/// the application level to generate the final desired output. This control
-/// is agnostic of the hardware or software used to generate the output
-/// tensors.
-///
-/// The structure of the span is described by the CnnOutputTensorInfo
-/// control.
-///
-/// \sa CnnOutputTensorInfo
-#[cfg(feature = "vendor_rpi")]
-#[derive(Debug, Clone)]
-pub struct CnnOutputTensor(pub Vec<f32>);
-#[cfg(feature = "vendor_rpi")]
-impl Deref for CnnOutputTensor {
-    type Target = Vec<f32>;
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
-#[cfg(feature = "vendor_rpi")]
-impl DerefMut for CnnOutputTensor {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.0
-    }
-}
-#[cfg(feature = "vendor_rpi")]
-impl TryFrom<ControlValue> for CnnOutputTensor {
-    type Error = ControlValueError;
-    fn try_from(value: ControlValue) -> Result<Self, Self::Error> {
-        Ok(Self(<Vec<f32>>::try_from(value)?))
-    }
-}
-#[cfg(feature = "vendor_rpi")]
-impl From<CnnOutputTensor> for ControlValue {
-    fn from(val: CnnOutputTensor) -> Self {
-        ControlValue::from(val.0)
-    }
-}
-#[cfg(feature = "vendor_rpi")]
-impl ControlEntry for CnnOutputTensor {
-    const ID: u32 = ControlId::CnnOutputTensor as _;
-}
-#[cfg(feature = "vendor_rpi")]
-impl Control for CnnOutputTensor {}
-/// This control returns the structure of the CnnOutputTensor. This structure
-/// takes the following form:
-///
-/// constexpr unsigned int NetworkNameLen = 64;
-/// constexpr unsigned int MaxNumTensors = 8;
-/// constexpr unsigned int MaxNumDimensions = 8;
-///
-/// struct CnnOutputTensorInfo {
-/// ```text
-///   char networkName[NetworkNameLen];
-///   uint32_t numTensors;
-///   OutputTensorInfo info[MaxNumTensors];
-/// ```
-/// };
-///
-/// with
-///
-/// struct OutputTensorInfo {
-/// ```text
-///   uint32_t tensorDataNum;
-///   uint32_t numDimensions;
-///   uint16_t size[MaxNumDimensions];
-/// ```
-/// };
-///
-/// networkName is the name of the CNN used,
-/// numTensors is the number of output tensors returned,
-/// tensorDataNum gives the number of elements in each output tensor,
-/// numDimensions gives the dimensionality of each output tensor,
-/// size gives the size of each dimension in each output tensor.
-///
-/// \sa CnnOutputTensor
-#[cfg(feature = "vendor_rpi")]
-#[derive(Debug, Clone)]
-pub struct CnnOutputTensorInfo(pub Vec<u8>);
-#[cfg(feature = "vendor_rpi")]
-impl Deref for CnnOutputTensorInfo {
-    type Target = Vec<u8>;
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
-#[cfg(feature = "vendor_rpi")]
-impl DerefMut for CnnOutputTensorInfo {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.0
-    }
-}
-#[cfg(feature = "vendor_rpi")]
-impl TryFrom<ControlValue> for CnnOutputTensorInfo {
-    type Error = ControlValueError;
-    fn try_from(value: ControlValue) -> Result<Self, Self::Error> {
-        Ok(Self(<Vec<u8>>::try_from(value)?))
-    }
-}
-#[cfg(feature = "vendor_rpi")]
-impl From<CnnOutputTensorInfo> for ControlValue {
-    fn from(val: CnnOutputTensorInfo) -> Self {
-        ControlValue::from(val.0)
-    }
-}
-#[cfg(feature = "vendor_rpi")]
-impl ControlEntry for CnnOutputTensorInfo {
-    const ID: u32 = ControlId::CnnOutputTensorInfo as _;
-}
-#[cfg(feature = "vendor_rpi")]
-impl Control for CnnOutputTensorInfo {}
-/// Boolean to control if the IPA returns the input tensor used by the CNN
-/// to generate the output tensors via the CnnInputTensor control. Because
-/// the input tensor may be relatively large, for efficiency reason avoid
-/// enabling input tensor output unless required for debugging purposes.
-///
-/// \sa CnnInputTensor
-#[cfg(feature = "vendor_rpi")]
-#[derive(Debug, Clone)]
-pub struct CnnEnableInputTensor(pub bool);
-#[cfg(feature = "vendor_rpi")]
-impl Deref for CnnEnableInputTensor {
-    type Target = bool;
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
-#[cfg(feature = "vendor_rpi")]
-impl DerefMut for CnnEnableInputTensor {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.0
-    }
-}
-#[cfg(feature = "vendor_rpi")]
-impl TryFrom<ControlValue> for CnnEnableInputTensor {
-    type Error = ControlValueError;
-    fn try_from(value: ControlValue) -> Result<Self, Self::Error> {
-        Ok(Self(<bool>::try_from(value)?))
-    }
-}
-#[cfg(feature = "vendor_rpi")]
-impl From<CnnEnableInputTensor> for ControlValue {
-    fn from(val: CnnEnableInputTensor) -> Self {
-        ControlValue::from(val.0)
-    }
-}
-#[cfg(feature = "vendor_rpi")]
-impl ControlEntry for CnnEnableInputTensor {
-    const ID: u32 = ControlId::CnnEnableInputTensor as _;
-}
-#[cfg(feature = "vendor_rpi")]
-impl Control for CnnEnableInputTensor {}
-/// This control returns a span of uint8_t pixel values that represent the
-/// input tensor for a Convolutional Neural Network (CNN). The size and
-/// format of this array of values is entirely dependent on the neural
-/// network used, and further post-processing (e.g. pixel normalisations) may
-/// need to be performed at the application level to generate the final input
-/// image.
-///
-/// The structure of the span is described by the CnnInputTensorInfo
-/// control.
-///
-/// \sa CnnInputTensorInfo
-#[cfg(feature = "vendor_rpi")]
-#[derive(Debug, Clone)]
-pub struct CnnInputTensor(pub Vec<u8>);
-#[cfg(feature = "vendor_rpi")]
-impl Deref for CnnInputTensor {
-    type Target = Vec<u8>;
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
-#[cfg(feature = "vendor_rpi")]
-impl DerefMut for CnnInputTensor {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.0
-    }
-}
-#[cfg(feature = "vendor_rpi")]
-impl TryFrom<ControlValue> for CnnInputTensor {
-    type Error = ControlValueError;
-    fn try_from(value: ControlValue) -> Result<Self, Self::Error> {
-        Ok(Self(<Vec<u8>>::try_from(value)?))
-    }
-}
-#[cfg(feature = "vendor_rpi")]
-impl From<CnnInputTensor> for ControlValue {
-    fn from(val: CnnInputTensor) -> Self {
-        ControlValue::from(val.0)
-    }
-}
-#[cfg(feature = "vendor_rpi")]
-impl ControlEntry for CnnInputTensor {
-    const ID: u32 = ControlId::CnnInputTensor as _;
-}
-#[cfg(feature = "vendor_rpi")]
-impl Control for CnnInputTensor {}
-/// This control returns the structure of the CnnInputTensor. This structure
-/// takes the following form:
-///
-/// constexpr unsigned int NetworkNameLen = 64;
-///
-/// struct CnnInputTensorInfo {
-/// ```text
-///   char networkName[NetworkNameLen];
-///   uint32_t width;
-///   uint32_t height;
-///   uint32_t numChannels;
-/// ```
-/// };
-///
-/// where
-///
-/// networkName is the name of the CNN used,
-/// width and height are the input tensor image width and height in pixels,
-/// numChannels is the number of channels in the input tensor image.
-///
-/// \sa CnnInputTensor
-#[cfg(feature = "vendor_rpi")]
-#[derive(Debug, Clone)]
-pub struct CnnInputTensorInfo(pub Vec<u8>);
-#[cfg(feature = "vendor_rpi")]
-impl Deref for CnnInputTensorInfo {
-    type Target = Vec<u8>;
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
-#[cfg(feature = "vendor_rpi")]
-impl DerefMut for CnnInputTensorInfo {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.0
-    }
-}
-#[cfg(feature = "vendor_rpi")]
-impl TryFrom<ControlValue> for CnnInputTensorInfo {
-    type Error = ControlValueError;
-    fn try_from(value: ControlValue) -> Result<Self, Self::Error> {
-        Ok(Self(<Vec<u8>>::try_from(value)?))
-    }
-}
-#[cfg(feature = "vendor_rpi")]
-impl From<CnnInputTensorInfo> for ControlValue {
-    fn from(val: CnnInputTensorInfo) -> Self {
-        ControlValue::from(val.0)
-    }
-}
-#[cfg(feature = "vendor_rpi")]
-impl ControlEntry for CnnInputTensorInfo {
-    const ID: u32 = ControlId::CnnInputTensorInfo as _;
-}
-#[cfg(feature = "vendor_rpi")]
-impl Control for CnnInputTensorInfo {}
-/// This control returns performance metrics for the CNN processing stage.
-/// Two values are returned in this span, the runtime of the CNN/DNN stage
-/// and the DSP stage in milliseconds.
-#[cfg(feature = "vendor_rpi")]
-#[derive(Debug, Clone)]
-pub struct CnnKpiInfo(pub [i32; 2]);
-#[cfg(feature = "vendor_rpi")]
-impl Deref for CnnKpiInfo {
-    type Target = [i32; 2];
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
-#[cfg(feature = "vendor_rpi")]
-impl DerefMut for CnnKpiInfo {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.0
-    }
-}
-#[cfg(feature = "vendor_rpi")]
-impl TryFrom<ControlValue> for CnnKpiInfo {
-    type Error = ControlValueError;
-    fn try_from(value: ControlValue) -> Result<Self, Self::Error> {
-        Ok(Self(<[i32; 2]>::try_from(value)?))
-    }
-}
-#[cfg(feature = "vendor_rpi")]
-impl From<CnnKpiInfo> for ControlValue {
-    fn from(val: CnnKpiInfo) -> Self {
-        ControlValue::from(val.0)
-    }
-}
-#[cfg(feature = "vendor_rpi")]
-impl ControlEntry for CnnKpiInfo {
-    const ID: u32 = ControlId::CnnKpiInfo as _;
-}
-#[cfg(feature = "vendor_rpi")]
-impl Control for CnnKpiInfo {}
 pub fn make_dyn(
     id: ControlId,
     val: ControlValue,
@@ -3672,23 +3315,5 @@ pub fn make_dyn(
         ControlId::Bcm2835StatsOutput => Ok(Box::new(Bcm2835StatsOutput::try_from(val)?)),
         #[cfg(feature = "vendor_rpi")]
         ControlId::ScalerCrops => Ok(Box::new(ScalerCrops::try_from(val)?)),
-        #[cfg(feature = "vendor_rpi")]
-        ControlId::PispStatsOutput => Ok(Box::new(PispStatsOutput::try_from(val)?)),
-        #[cfg(feature = "vendor_rpi")]
-        ControlId::CnnOutputTensor => Ok(Box::new(CnnOutputTensor::try_from(val)?)),
-        #[cfg(feature = "vendor_rpi")]
-        ControlId::CnnOutputTensorInfo => {
-            Ok(Box::new(CnnOutputTensorInfo::try_from(val)?))
-        }
-        #[cfg(feature = "vendor_rpi")]
-        ControlId::CnnEnableInputTensor => {
-            Ok(Box::new(CnnEnableInputTensor::try_from(val)?))
-        }
-        #[cfg(feature = "vendor_rpi")]
-        ControlId::CnnInputTensor => Ok(Box::new(CnnInputTensor::try_from(val)?)),
-        #[cfg(feature = "vendor_rpi")]
-        ControlId::CnnInputTensorInfo => Ok(Box::new(CnnInputTensorInfo::try_from(val)?)),
-        #[cfg(feature = "vendor_rpi")]
-        ControlId::CnnKpiInfo => Ok(Box::new(CnnKpiInfo::try_from(val)?)),
     }
 }
