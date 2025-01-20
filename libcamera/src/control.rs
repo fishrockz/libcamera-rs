@@ -46,6 +46,16 @@ impl<T: ControlEntry> DynControlEntry for T {
 #[repr(transparent)]
 pub struct ControlInfo(libcamera_control_info_t);
 
+impl core::fmt::Debug for ControlInfo {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let mut map = f.debug_map();
+        map.entry(&"min", &self.min());
+        map.entry(&"max", &self.max());
+        map.entry(&"default", &self.def());
+        map.finish()
+    }
+}
+
 impl ControlInfo {
     pub(crate) unsafe fn from_ptr<'a>(ptr: NonNull<libcamera_control_info_t>) -> &'a mut Self {
         // Safety: we can cast it because of `#[repr(transparent)]`
@@ -169,6 +179,21 @@ impl<'a> IntoIterator for &'a ControlInfoMap {
 
     fn into_iter(self) -> Self::IntoIter {
         ControlInfoMapIter::new(self).expect("Failed to create ControlInfoMap iterator")
+    }
+}
+
+impl core::fmt::Debug for ControlInfoMap {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let mut map = f.debug_map();
+        for (id, val) in self.into_iter() {
+            match ControlId::try_from(id) {
+                // Try to parse dynamic property, if not successful, just display the raw ControlValue
+                Ok(id) => map.entry(&id, &val),
+                // If PropertyId is unknown just use u32 as key
+                Err(_) => map.entry(&id, &val),
+            };
+        }
+        map.finish()
     }
 }
 

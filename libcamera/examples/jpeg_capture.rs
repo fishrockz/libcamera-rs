@@ -3,6 +3,8 @@ use std::time::Duration;
 use libcamera::{
     camera::CameraConfigurationStatus,
     camera_manager::CameraManager,
+    control::ControlList,
+    controls::Contrast,
     framebuffer::AsFrameBuffer,
     framebuffer_allocator::{FrameBuffer, FrameBufferAllocator},
     framebuffer_map::MemoryMappedFrameBuffer,
@@ -83,7 +85,11 @@ fn main() {
         tx.send(req).unwrap();
     });
 
-    cam.start(None).unwrap();
+    println!("controls {:#?}", cam.controls());
+
+    let mut new_controls = ControlList::new();
+    new_controls.set(Contrast(0.9)).unwrap();
+    cam.start(Some(&new_controls)).unwrap();
 
     // Multiple requests can be queued at a time, but for this example we just want a single frame.
     cam.queue_request(reqs.pop().unwrap()).unwrap();
