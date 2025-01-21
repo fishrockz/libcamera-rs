@@ -50,6 +50,7 @@ pub trait UniquePtrTarget: Sized {
 pub struct UniquePtr<T: UniquePtrTarget> {
     ptr: NonNull<T>,
 }
+unsafe impl<T: UniquePtrTarget> Send for UniquePtr<T> {}
 
 impl<T: UniquePtrTarget> UniquePtr<T> {
     pub fn new() -> Self {
