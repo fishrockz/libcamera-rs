@@ -239,14 +239,21 @@ impl ControlList {
     /// be returned. Use [ControlList::get] if you need to ensure that value was set.
     pub fn set<C: Control>(&mut self, val: C) -> Result<(), ControlError> {
         let ctrl_val: ControlValue = val.into();
+        self.set_by_id(C::ID as _, ctrl_val)
+    }
 
+    /// Sets control value.
+    ///
+    /// This has the same limiations as [ControlList::set] but it takes its input in the same types as the
+    /// [ControlListRefIterator::next] provides them allowing you to chain the output of one ControlLists
+    /// contence into another.
+    pub fn set_by_id(&mut self, id: u32, ctrl_val: ControlValue) -> Result<(), ControlError> {
         unsafe {
             let val_ptr = NonNull::new(libcamera_control_value_create()).unwrap();
             ctrl_val.write(val_ptr);
-            libcamera_control_list_set(self.ptr().cast_mut(), C::ID as _, val_ptr.as_ptr());
+            libcamera_control_list_set(self.ptr().cast_mut(), id, val_ptr.as_ptr());
             libcamera_control_value_destroy(val_ptr.as_ptr());
         }
-
         Ok(())
     }
 }
