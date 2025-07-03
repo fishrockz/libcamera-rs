@@ -11,6 +11,7 @@ fn main() {
         println!("ID: {}", cam.id());
 
         println!("Properties: {:#?}", cam.properties());
+        println!("Controls: {:#?}", cam.controls());
 
         let config = cam.generate_configuration(&[StreamRole::ViewFinder]).unwrap();
         let view_finder_cfg = config.get(0).unwrap();
