@@ -716,6 +716,8 @@ impl<'d> ActiveCamera<'d> {
     }
 }
 
+unsafe impl<'d> Send for ActiveCamera<'d> {}
+
 impl<'d> Deref for ActiveCamera<'d> {
     type Target = Camera<'d>;
 
